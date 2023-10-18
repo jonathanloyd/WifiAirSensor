@@ -1,154 +1,117 @@
 #include "WifiCredentials.h"
-#include <Arduino.h>
 #include <ESP8266WiFi.h>
-#include <WiFiClientSecure.h>
-#include <AzureIoTHubMQTTClient.h>
+#include <PubSubClient.h>
 
-const char *AP_SSID = SSID;
-const char *AP_PASS = PASSWORD;
 
-WiFiClientSecure tlsClient;
-AzureIoTHubMQTTClient client(tlsClient, IOTHUB_HOSTNAME, DEVICE_ID, DEVICE_KEY);
-WiFiEventHandler e1, e2;
+WiFiClient espClient;
+PubSubClient client(espClient);
+unsigned long lastMsg = 0;
+#define MSG_BUFFER_SIZE (50)
+char msg[MSG_BUFFER_SIZE];
+int value = 0;
 
-unsigned long lastMillis = 0;
-
-void connectToIoTHub()
+void setup_wifi()
 {
-  Serial.print("\nBeginning Azure IoT Hub Client... ");
-  if (client.begin())
+  delay(10);
+  // Connect to a WiFi network
+  Serial.println();
+  Serial.print("Connecting to WiFi network");
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED)
   {
-    Serial.println("Connected to MQTT");
+    delay(500);
+    Serial.print(".");
+  }
+
+  randomSeed(micros());
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void callback(char *out_topic, byte *payload, unsigned int length)
+{
+  Serial.print("Message arrived [");
+  Serial.print(out_topic);
+  Serial.print("] ");
+  for (int i = 0; i < length; i++)
+  {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+
+  // Switch on the LED if an 1 was received as first character
+  if ((char)payload[0] == '1')
+  {
+    digitalWrite(BUILTIN_LED, LOW); // Turn the LED on (Note that LOW is the voltage level
+    // but actually the LED is on; this is because
+    // it is active low on the ESP-01)
   }
   else
   {
-    Serial.println("Could not connect to MQTT");
+    digitalWrite(BUILTIN_LED, HIGH); // Turn the LED off by making the voltage HIGH
   }
 }
 
-void onMessageCallback(const MQTT::Publish &msg)
+void reconnect()
 {
-  // Handle Cloud to Device message
-
-  //  if (msg.payload_len() == 0) {
-  //      return;
-  //  }
-
-  //  Serial.println(msg.payload_string());
-}
-
-void onSTAGotIP(WiFiEventStationModeGotIP ipInfo)
-{
-  Serial.printf("Current IP: %s\r\n", ipInfo.ip.toString().c_str());
-
-  // Connect to IoT Hub upon WiFi connected
-  connectToIoTHub();
-}
-
-void onSTADisconnected(WiFiEventStationModeDisconnected event_info)
-{
-  Serial.printf("Disconnected from SSID: %s\n", event_info.ssid.c_str());
-  Serial.printf("Reason: %d\n", event_info.reason);
-}
-
-void onClientEvent(const AzureIoTHubMQTTClient::AzureIoTHubMQTTClientEvent event)
-{
-  if (event == AzureIoTHubMQTTClient::AzureIoTHubMQTTClientEventConnected)
+  // Loop until we're reconnected
+  while (!client.connected())
   {
-    Serial.println("Connected to Azure IoT Hub");
-
-    // Add the callback to process cloud-to-device message/command
-    client.onMessage(onMessageCallback);
+    Serial.print("Attempting MQTT connection...");
+    // Create a random client ID
+    String clientId = "ESP8266Client-";
+    clientId += String(random(0xffff), HEX);
+    // Attempt to connect
+    if (client.connect(clientId.c_str()))
+    {
+      Serial.println("connected");
+      // Once connected, publish an announcement...
+      client.publish(out_topic, "hello world");
+      // ... and resubscribe
+      client.subscribe("inTopic");
+    }
+    else
+    {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
   }
-}
-
-void onActivateRelayCommand(String cmdName, JsonVariant jsonValue)
-{
-  // Parse cloud-to-device message JSON
-  // {"Name":"ActivateRelay","Parameters":{"Activated":0}}
-
-  // JsonObject& jsonObject = jsonValue.as<JsonObject>();
-  // if (jsonObject.containsKey("Parameters"))
-  // {
-  //   auto params = jsonValue["Parameters"];
-  //   auto isAct = (params["Activated"]);
-  //   if (isAct)
-  //   {
-  //     Serial.println("Activated true");
-  //   }
-  //   else
-  //   {
-  //     Serial.println("Activated false");
-  //   }
-  // }
 }
 
 void setup()
 {
+  pinMode(BUILTIN_LED, OUTPUT); // Initialize the BUILTIN_LED pin as an output
   Serial.begin(115200);
-
-  while (!Serial)
-  {
-    yield();
-  }
-  delay(2000);
-
-  Serial.setDebugOutput(true);
-
-  Serial.print("Connecting to WiFi...");
-  // Begin WiFi joining with provided Access Point name and password
-  WiFi.begin(AP_SSID, AP_PASS);
-
-  // Handle WiFi events
-  e1 = WiFi.onStationModeGotIP(onSTAGotIP); // As soon WiFi is connected, start the Client
-  e2 = WiFi.onStationModeDisconnected(onSTADisconnected);
-
-  // Handle client events
-  client.onEvent(onClientEvent);
-
-  // Command format is assumed like this: {"Name":"[COMMAND_NAME]","Parameters":[PARAMETERS_JSON_ARRAY]}
-  client.onCloudCommand("ActivateRelay", onActivateRelayCommand);
+  setup_wifi();
+  client.setServer(mqtt_server, mqtt_port);
+  client.setCallback(callback);
 }
 
 void loop()
 {
-  // This MUST be in loop()
-  client.run();
-
-  if (client.connected())
+  if (!client.connected())
   {
-    // // Publish a message roughly every 3 second. Only after time is retrieved and set properly.
-    // if (millis() - lastMillis > 3000 && timeStatus() != timeNotSet)
-    // {
-    //   lastMillis = millis();
-      
-    //   Serial.println("This is when we would send a message.");
-
-    //   // // Read the actual temperature from sensor
-    //   // float temp, press;
-    //   // readSensor(&temp, &press);
-
-    //   // Get current timestamp, using Time lib
-    //   time_t currentTime = now();
-
-    //   // // You can do this to publish payload to IoT Hub
-    //   // /*
-    //   // String payload = "{\"DeviceId\":\"" + String(DEVICE_ID) + "\", \"MTemperature\":" + String(temp) + ", \"EventTime\":" + String(currentTime) + "}";
-    //   // Serial.println(payload);
-
-    //   // //client.publish(MQTT::Publish("devices/" + String(DEVICE_ID) + "/messages/events/", payload).set_qos(1));
-    //   // client.sendEvent(payload);
-    //   // */
-
-    //   // // Or instead, use this more convenient way
-    //   // AzureIoTHubMQTTClient::KeyValueMap keyVal = {{"MTemperature", temp}, {"MPressure", press}, {"DeviceId", DEVICE_ID}, {"EventTime", currentTime}};
-    //   // client.sendEventWithKeyVal(keyVal);
-    // }
+    reconnect();
   }
-  else
+  client.loop();
+
+  unsigned long now = millis();
+  if (now - lastMsg > 2000)
   {
-    Serial.println("Client not connected");
+    lastMsg = now;
+    ++value;
+    snprintf(msg, MSG_BUFFER_SIZE, "hello world #%ld", value);
+    Serial.print("Publish message: ");
+    Serial.println(msg);
+    client.publish(out_topic, msg);
   }
-
-  delay(10); // Allow for WiFi stability
 }
