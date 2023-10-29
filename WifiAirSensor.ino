@@ -2,7 +2,6 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
-
 WiFiClient espClient;
 PubSubClient client(espClient);
 unsigned long lastMsg = 0;
@@ -74,7 +73,7 @@ void reconnect()
       // Once connected, publish an announcement...
       client.publish(out_topic, "hello world");
       // ... and resubscribe
-      client.subscribe("inTopic");
+      client.subscribe(in_topic);
     }
     else
     {
@@ -105,7 +104,7 @@ void loop()
   client.loop();
 
   unsigned long now = millis();
-  if (now - lastMsg > 2000)
+  if (now - lastMsg > 10000)
   {
     lastMsg = now;
     ++value;
