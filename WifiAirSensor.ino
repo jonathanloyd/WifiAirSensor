@@ -7,7 +7,6 @@ PubSubClient client(espClient);
 unsigned long lastMsg = 0;
 #define MSG_BUFFER_SIZE (50)
 char msg[MSG_BUFFER_SIZE];
-int value = 0;
 
 void setup_wifi()
 {
@@ -107,8 +106,8 @@ void loop()
   if (now - lastMsg > 10000)
   {
     lastMsg = now;
-    ++value;
-    snprintf(msg, MSG_BUFFER_SIZE, "hello world #%ld", value);
+    int sensorReading = analogRead(0);
+    snprintf(msg, MSG_BUFFER_SIZE, "%d", sensorReading);
     Serial.print("Publish message: ");
     Serial.println(msg);
     client.publish(out_topic, msg);
