@@ -107,7 +107,7 @@ void loop()
   {
     lastMsg = now;
     int sensorReading = analogRead(0);
-    snprintf(msg, MSG_BUFFER_SIZE, "%d", sensorReading);
+    snprintf(msg, MSG_BUFFER_SIZE, "Sensor Reading: %d", sensorReading);
     Serial.print("Publish message: ");
     Serial.println(msg);
     client.publish(out_topic, msg);
