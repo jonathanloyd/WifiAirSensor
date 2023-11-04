@@ -1,10 +1,19 @@
 #include "WifiCredentials.h"
-#include <ESP8266WiFi.h>
-#include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <ESP8266WiFi.h>
+#include <NTPClient.h>
+#include <PubSubClient.h>
+#include <WiFiUdp.h>
 
+// Define NTP Client to get time
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org");
+
+// Define WiFi and PubSub client
 WiFiClient espClient;
 PubSubClient client(espClient);
+
+// Message definitions
 unsigned long lastMsg = 0;
 #define MSG_BUFFER_SIZE (50)
 char msg[MSG_BUFFER_SIZE];
@@ -96,7 +105,13 @@ void setup()
 {
   pinMode(BUILTIN_LED, OUTPUT); // Initialize the BUILTIN_LED pin as an output
   Serial.begin(115200);
+
   setup_wifi();
+
+  // Initialize a NTPClient to get time and set offset to 0 (UTC)
+  timeClient.begin();
+  timeClient.setTimeOffset(0);
+
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
 }
@@ -109,12 +124,15 @@ void loop()
   }
   client.loop();
 
+  timeClient.update();
+
   unsigned long now = millis();
   if (now - lastMsg > 10000)
   {
     lastMsg = now;
     StaticJsonDocument<256> doc;
     doc["messageType"] = "sensorReading";
+    doc["epochTime"] = timeClient.getEpochTime();
     doc["sensorReading"] = analogRead(0);
     char buffer[256];
     size_t n = serializeJson(doc, buffer);
