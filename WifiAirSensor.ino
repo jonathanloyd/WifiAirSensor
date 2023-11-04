@@ -1,6 +1,7 @@
 #include "WifiCredentials.h"
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
+#include <ArduinoJson.h>
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -70,7 +71,13 @@ void reconnect()
     {
       Serial.println("connected");
       // Once connected, publish an announcement...
-      client.publish(out_topic, "hello world");
+      StaticJsonDocument<256> announceDoc;
+      announceDoc["messageType"] = "announcement";
+      char buffer[256];
+      size_t n = serializeJson(announceDoc, buffer);
+      client.publish(out_topic, buffer, n);
+      serializeJson(announceDoc, Serial);
+      Serial.println();
       // ... and resubscribe
       client.subscribe(in_topic);
     }
@@ -106,10 +113,13 @@ void loop()
   if (now - lastMsg > 10000)
   {
     lastMsg = now;
-    int sensorReading = analogRead(0);
-    snprintf(msg, MSG_BUFFER_SIZE, "Sensor Reading: %d", sensorReading);
-    Serial.print("Publish message: ");
-    Serial.println(msg);
-    client.publish(out_topic, msg);
+    StaticJsonDocument<256> doc;
+    doc["messageType"] = "sensorReading";
+    doc["sensorReading"] = analogRead(0);
+    char buffer[256];
+    size_t n = serializeJson(doc, buffer);
+    client.publish(out_topic, buffer, n);
+    serializeJson(doc, Serial);
+    Serial.println();
   }
 }
